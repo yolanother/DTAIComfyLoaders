@@ -1,6 +1,5 @@
-# Comfy UI Node Template
-This is a template for creating custom nodes for the Comfy UI stable diffusion client.
-
+# Comfy UI Online Loaders
+A collection of loaders that use a shared common online data source rather than relying on the files to be present locally.
 ## Description
 This Python script is an optional add-on to the Comfy UI stable diffusion client. It introduces quality of life improvements by providing variable nodes and shared global variables.
 

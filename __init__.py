@@ -1,95 +1,411 @@
-class Example:
-    """
-    A example node
+import torch
 
-    Class methods
-    -------------
-    INPUT_TYPES (dict): 
-        Tell the main program input parameters of nodes.
+import os
+import hashlib
+import numpy as np
+import safetensors.torch
 
-    Attributes
-    ----------
-    RETURN_TYPES (`tuple`): 
-        The type of each element in the output tulple.
-    RETURN_NAMES (`tuple`):
-        Optional: The name of each output in the output tulple.
-    FUNCTION (`str`):
-        The name of the entry-point method. For example, if `FUNCTION = "execute"` then it will run Example().execute()
-    OUTPUT_NODE ([`bool`]):
-        If this node is an output node that outputs a result/image from the graph. The SaveImage node is an example.
-        The backend iterates on these output nodes and tries to execute all their parents if their parent graph is properly connected.
-        Assumed to be False if not present.
-    CATEGORY (`str`):
-        The category the node should appear in the UI.
-    execute(s) -> tuple || None:
-        The entry point method. The name of this method must be the same as the value of property `FUNCTION`.
-        For example, if `FUNCTION = "execute"` then this method's name must be `execute`, if `FUNCTION = "foo"` then it must be `foo`.
-    """
-    def __init__(self):
-        pass
-    
+import comfy.diffusers_load
+import comfy.samplers
+import comfy.sample
+import comfy.sd
+import comfy.utils
+
+import comfy.clip_vision
+
+import comfy.model_management
+
+import comfy
+from PIL import Image, ImageOps
+
+import folder_paths
+from comfy_extras.chainner_models import model_loading
+from custom_nodes.DTAIComfyLoaders.loaders import *
+
+
+class DTNodeCheckpointLoader:
     @classmethod
     def INPUT_TYPES(s):
-        """
-            Return a dictionary which contains config for all input fields.
-            Some types (string): "MODEL", "VAE", "CLIP", "CONDITIONING", "LATENT", "IMAGE", "INT", "STRING", "FLOAT".
-            Input types "INT", "STRING" or "FLOAT" are special values for fields on the node.
-            The type can be a list for selection.
+        return {"required": { "ckpt_name": (checkpoints.list(), ), }}
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE")
+    FUNCTION = "load_checkpoint"
 
-            Returns: `dict`:
-                - Key input_fields_group (`string`): Can be either required, hidden or optional. A node class must have property `required`
-                - Value input_fields (`dict`): Contains input fields config:
-                    * Key field_name (`string`): Name of a entry-point method's argument
-                    * Value field_config (`tuple`):
-                        + First value is a string indicate the type of field or a list for selection.
-                        + Secound value is a config for type "INT", "STRING" or "FLOAT".
-        """
-        return {
-            "required": {
-                "image": ("IMAGE",),
-                "int_field": ("INT", {
-                    "default": 0, 
-                    "min": 0, #Minimum value
-                    "max": 4096, #Maximum value
-                    "step": 64 #Slider's step
+    CATEGORY = "DoubTech/Loaders"
+
+    def load_checkpoint(self, ckpt_name, output_vae=True, output_clip=True):
+        ckpt_path = checkpoints.download(ckpt_name)
+        out = comfy.sd.load_checkpoint_guess_config(ckpt_path, output_vae=True, output_clip=True,
+                                                    embedding_directory=folder_paths.get_folder_paths("embeddings"))
+        return out
+
+
+class DTVAELoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "vae_name": (vae.list(), )}}
+    RETURN_TYPES = ("VAE",)
+    FUNCTION = "load_vae"
+
+    CATEGORY = "DoubTech/Loaders"
+
+    #TODO: scale factor?
+    def load_vae(self, vae_name):
+        v = comfy.sd.VAE(ckpt_path=vae.download(vae_name))
+        return (v,)
+
+
+class DTLoraLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "model": ("MODEL",),
+                              "clip": ("CLIP", ),
+                              "lora_name": (lora.list(), ),
+                              "strength_model": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                              "strength_clip": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01}),
+                              }}
+    RETURN_TYPES = ("MODEL", "CLIP")
+    FUNCTION = "load_lora"
+
+    CATEGORY = "DoubTech/Loaders"
+
+    def load_lora(self, model, clip, lora_name, strength_model, strength_clip):
+        if strength_model == 0 and strength_clip == 0:
+            return (model, clip)
+
+        lora_path = lora.download("lora_name")
+        model_lora, clip_lora = comfy.sd.load_lora_for_models(model, clip, lora_path, strength_model, strength_clip)
+        return (model_lora, clip_lora)
+
+
+class DTCLIPLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "clip_name": (clip.list(), ),
+                             }}
+    RETURN_TYPES = ("CLIP",)
+    FUNCTION = "load_clip"
+
+    CATEGORY = "DoubTech/Loaders"
+
+    def load_clip(self, clip_name):
+        clip_path = clip.download(clip_name)
+        c = comfy.sd.load_clip(ckpt_path=clip_path, embedding_directory=folder_paths.get_folder_paths("embeddings"))
+        return (c,)
+
+
+class DTCLIPVisionLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "clip_name": (clipVision.list(), ),
+                             }}
+    RETURN_TYPES = ("CLIP_VISION",)
+    FUNCTION = "load_clip"
+
+    CATEGORY = "DoubTech/Loaders"
+
+    def load_clip(self, clip_name):
+        clip_path = clipVision.download(clip_name)
+        clip_vision = comfy.clip_vision.load(clip_path)
+        return (clip_vision,)
+
+
+class DTStyleModelLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "style_model_name": (style.list(), )}}
+
+    RETURN_TYPES = ("STYLE_MODEL",)
+    FUNCTION = "load_style_model"
+
+    CATEGORY = "DoubTech/Loaders"
+
+    def load_style_model(self, style_model_name):
+        style_model_path = style.download(style_model_name)
+        style_model = comfy.sd.load_style_model(style_model_path)
+        return (style_model,)
+
+
+class DTGLIGENLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {"gligen_name": (gligen.list(),)}}
+
+    RETURN_TYPES = ("GLIGEN",)
+    FUNCTION = "load_gligen"
+
+    CATEGORY = "DoubTech/Loaders"
+
+    def load_gligen(self, gligen_name):
+        gligen_path = gligen.download(gligen_name)
+        g = comfy.sd.load_gligen(gligen_path)
+        return (g,)
+
+
+class DTControlNetLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "control_net_name": (controlNet.list(), )}}
+
+    RETURN_TYPES = ("CONTROL_NET",)
+    FUNCTION = "load_controlnet"
+
+    CATEGORY = "DoubTech/Loaders"
+
+    def load_controlnet(self, control_net_name):
+        controlnet_path = controlNet.download(control_net_name)
+        controlnet = comfy.sd.load_controlnet(controlnet_path)
+        return (controlnet,)
+
+
+class DTDiffControlNetLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "model": ("MODEL",),
+                              "control_net_name": (controlNetDiff.list(), )}}
+
+    RETURN_TYPES = ("CONTROL_NET",)
+    FUNCTION = "load_controlnet"
+
+    CATEGORY = "DoubTech/Loaders"
+
+    def load_controlnet(self, model, control_net_name):
+        controlnet_path = controlNetDiff.download(control_net_name)
+        controlnet = comfy.sd.load_controlnet(controlnet_path, model)
+        return (controlnet,)
+
+
+class DTunCLIPCheckpointLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "ckpt_name": (unclipCheckpoint.list(), ),
+                             }}
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE", "CLIP_VISION")
+    FUNCTION = "load_checkpoint"
+
+    CATEGORY = "DoubTech/Loaders"
+
+    def load_checkpoint(self, ckpt_name, output_vae=True, output_clip=True):
+        ckpt_path = unclipCheckpoint.download(ckpt_name)
+        out = comfy.sd.load_checkpoint_guess_config(ckpt_path, output_vae=True, output_clip=True, output_clipvision=True, embedding_directory=folder_paths.get_folder_paths("embeddings"))
+        return out
+
+class DTCheckpointLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "config_name": (configs.list(), ),
+                              "ckpt_name": (checkpoints.list(), )}}
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE")
+    FUNCTION = "load_checkpoint"
+
+    CATEGORY = "DoubTech/Loaders/Advanced"
+
+    def load_checkpoint(self, config_name, ckpt_name, output_vae=True, output_clip=True):
+        config_path = configs.download(config_name)
+        ckpt_path = checkpoints.download(ckpt_name)
+        return comfy.sd.load_checkpoint(config_path, ckpt_path, output_vae=True, output_clip=True, embedding_directory=folder_paths.get_folder_paths("embeddings"))
+
+class DTDiffusersLoader:
+    @classmethod
+    def INPUT_TYPES(cls):
+        paths = []
+        for search_path in folder_paths.get_folder_paths("diffusers"):
+            if os.path.exists(search_path):
+                for root, subdir, files in os.walk(search_path, followlinks=True):
+                    if "model_index.json" in files:
+                        paths.append(os.path.relpath(root, start=search_path))
+
+        return {"required": {"model_path": (paths,), }}
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE")
+    FUNCTION = "load_checkpoint"
+
+    CATEGORY = "DoubTech/Loaders/Advanced"
+
+    def load_checkpoint(self, model_path, output_vae=True, output_clip=True):
+        for search_path in folder_paths.get_folder_paths("diffusers"):
+            if os.path.exists(search_path):
+                path = os.path.join(search_path, model_path)
+                if os.path.exists(path):
+                    model_path = path
+                    break
+
+        return comfy.diffusers_load.load_diffusers(model_path, fp16=comfy.model_management.should_use_fp16(), output_vae=output_vae, output_clip=output_clip, embedding_directory=folder_paths.get_folder_paths("embeddings"))
+
+
+class DTLoadLatent:
+    @classmethod
+    def INPUT_TYPES(s):
+        input_dir = folder_paths.get_input_directory()
+        files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f)) and f.endswith(".latent")]
+        return {"required": {"latent": [sorted(files), ]}, }
+
+    CATEGORY = "DoubTech/Loaders"
+
+    RETURN_TYPES = ("LATENT", )
+    FUNCTION = "load"
+
+    def load(self, latent):
+        latent_path = folder_paths.get_annotated_filepath(latent)
+        latent = safetensors.torch.load_file(latent_path, device="cpu")
+        samples = {"samples": latent["latent_tensor"].float()}
+        return (samples, )
+
+    @classmethod
+    def IS_CHANGED(s, latent):
+        image_path = folder_paths.get_annotated_filepath(latent)
+        m = hashlib.sha256()
+        with open(image_path, 'rb') as f:
+            m.update(f.read())
+        return m.digest().hex()
+
+    @classmethod
+    def VALIDATE_INPUTS(s, latent):
+        if not folder_paths.exists_annotated_filepath(latent):
+            return "Invalid latent file: {}".format(latent)
+        return True
+
+
+class DTLoadImage:
+    loaded_path = None
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required":
+                    {"image": ("STRING", {
+                    "multiline": False,  # True if you want the field to look like the one on the ClipTextEncode node
+                    "default": "https://www.doubtech.ai/img/doubtech.ai-qrcode.png"
+                })},
+                }
+
+    CATEGORY = "DoubTech/Image"
+
+    RETURN_TYPES = ("IMAGE", "MASK")
+    FUNCTION = "load_image"
+    def load_image(self, image):
+        i = Image.open(image)
+        i = ImageOps.exif_transpose(i)
+        image = i.convert("RGB")
+        image = np.array(image).astype(np.float32) / 255.0
+        image = torch.from_numpy(image)[None,]
+        if 'A' in i.getbands():
+            mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
+            mask = 1. - torch.from_numpy(mask)
+        else:
+            mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
+        return (image, mask)
+
+    @classmethod
+    def IS_CHANGED(s, image):
+        return s.loaded_path != image
+
+    @classmethod
+    def VALIDATE_INPUTS(s, image):
+        if not image:
+            return "Invalid image file: {}".format(image)
+
+        return True
+
+
+class DTLoadImageMask:
+    loaded_path = None
+    _color_channels = ["alpha", "red", "green", "blue"]
+    @classmethod
+    def INPUT_TYPES(s):
+        input_dir = folder_paths.get_input_directory()
+        files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f))]
+        return {"required":
+                    {"image": ("STRING", {
+                    "multiline": False,  # True if you want the field to look like the one on the ClipTextEncode node
+                    "default": "https://www.doubtech.ai/img/doubtech.ai-qrcode.png"
                 }),
-                "float_field": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
-                "print_to_screen": (["enable", "disable"],),
-                "string_field": ("STRING", {
-                    "multiline": False, #True if you want the field to look like the one on the ClipTextEncode node
-                    "default": "Hello World!"
-                }),
-            },
-        }
+                     "channel": (s._color_channels, ), }
+                }
 
-    RETURN_TYPES = ("IMAGE",)
-    #RETURN_NAMES = ("image_output_name",)
+    CATEGORY = "DoubTech/Image"
 
-    FUNCTION = "test"
+    RETURN_TYPES = ("MASK",)
+    FUNCTION = "load_image"
+    def load_image(self, image, channel):
+        # Load the image from a url
+        i = Image.open(image)
+        i = ImageOps.exif_transpose(i)
+        if i.getbands() != ("R", "G", "B", "A"):
+            i = i.convert("RGBA")
+        mask = None
+        c = channel[0].upper()
+        if c in i.getbands():
+            mask = np.array(i.getchannel(c)).astype(np.float32) / 255.0
+            mask = torch.from_numpy(mask)
+            if c == 'A':
+                mask = 1. - mask
+        else:
+            mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
+        return (mask,)
 
-    #OUTPUT_NODE = False
+    @classmethod
+    def IS_CHANGED(s, image, channel):
+        return s.loaded_path != image
 
-    CATEGORY = "Example"
+    @classmethod
+    def VALIDATE_INPUTS(s, image, channel):
+        if not folder_paths.exists_annotated_filepath(image):
+            return "Invalid image file: {}".format(image)
 
-    def test(self, image, string_field, int_field, float_field, print_to_screen):
-        if print_to_screen == "enable":
-            print(f"""Your input contains:
-                string_field aka input text: {string_field}
-                int_field: {int_field}
-                float_field: {float_field}
-            """)
-        #do some processing on the image, in this example I just invert it
-        image = 1.0 - image
-        return (image,)
+        if channel not in s._color_channels:
+            return "Invalid color channel: {}".format(channel)
 
+        return True
+
+class DTUpscaleModelLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "model_name": (upscalers.list(), ), }}
+
+    RETURN_TYPES = ("UPSCALE_MODEL",)
+    FUNCTION = "load_model"
+
+    CATEGORY = "DoubTech/Loaders"
+
+    def load_model(self, model_name):
+        model_path = upscalers.download(model_name)
+        sd = comfy.utils.load_torch_file(model_path, safe_load=True)
+        out = model_loading.load_state_dict(sd).eval()
+        return (out, )
 
 # A dictionary that contains all nodes you want to export with their names
 # NOTE: names should be globally unique
 NODE_CLASS_MAPPINGS = {
-    "Example": Example
+    "DTCheckpointLoaderSimple": DTNodeCheckpointLoader,
+    "DTVAELoader": DTVAELoader,
+    "DTLoraLoader": DTLoraLoader,
+    "DTCLIPLoader": DTCLIPLoader,
+    "DTControlNetLoader": DTControlNetLoader,
+    "DTDiffControlNetLoader": DTDiffControlNetLoader,
+    "DTStyleModelLoader": DTStyleModelLoader,
+    "DTCLIPVisionLoader": DTCLIPVisionLoader,
+    "DTunCLIPCheckpointLoader": DTunCLIPCheckpointLoader,
+    "DTGLIGENLoader": DTGLIGENLoader,
+    "DTCheckpointLoader": DTCheckpointLoader,
+    "DTDiffusersLoader": DTDiffusersLoader,
+    "DTLoadLatent": DTLoadLatent,
+    "DTLoadImage": DTLoadImage,
+    "DTLoadImageMask": DTLoadImageMask,
+    "DTUpscaleModelLoader": DTUpscaleModelLoader,
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Example": "Example Node"
+    "DTCheckpointLoader": "Load Checkpoint (With Config - Online)",
+    "DTCheckpointLoaderSimple": "Load Checkpoint (Online)",
+    "DTDiffusersLoader": "Load Diffusers (Online)",
+    "DTVAELoader": "Load VAE (Online)",
+    "DTLoraLoader": "Load LoRA (Online)",
+    "DTCLIPLoader": "Load CLIP (Online)",
+    "DTControlNetLoader": "Load ControlNet Model (Online)",
+    "DTDiffControlNetLoader": "Load ControlNet Model (diff) (Online)",
+    "DTStyleModelLoader": "Load Style Model (Online)",
+    "DTCLIPVisionLoader": "Load CLIP Vision (Online)",
+    "DTUpscaleModelLoader": "Load Upscale Model (Online)",
+    "DTPreviewImage": "Preview Image (Online)",
+    "DTLoadImage": "Load Image from URL",
+    "DTLoadImageMask": "Load Image Mask from URL",
 }

@@ -1,0 +1,15 @@
+from custom_nodes.DTAIComfyLoaders.remoteloader import RemoteLoader
+
+upscalers = RemoteLoader("checkpoints", "https://api.aiart.doubtech.com/comfyui/upscalers")
+checkpoints = RemoteLoader("checkpoints", "https://api.aiart.doubtech.com/comfyui/checkpoints")
+vae = RemoteLoader("vae", "https://api.aiart.doubtech.com/comfyui/vae")
+lora = RemoteLoader("loras", "https://api.aiart.doubtech.com/comfyui/lora")
+clip = RemoteLoader("clip", "https://api.aiart.doubtech.com/comfyui/clip")
+controlNet = RemoteLoader("controlnet", "https://api.aiart.doubtech.com/comfyui/controlnet")
+controlNetDiff = RemoteLoader("controlnet", "https://api.aiart.doubtech.com/comfyui/controlnetdiff")
+style = RemoteLoader("style_models", "https://api.aiart.doubtech.com/comfyui/style")
+clipVision = RemoteLoader("clip_vision", "https://api.aiart.doubtech.com/comfyui/clipvision")
+unclipCheckpoint = RemoteLoader("checkpoints", "https://api.aiart.doubtech.com/comfyui/unclip")
+gligen = RemoteLoader("gligen", "https://api.aiart.doubtech.com/comfyui/gligen")
+hypernetwork = RemoteLoader("hypernetwork", "https://api.aiart.doubtech.com/comfyui/hypernetwork")
+configs = RemoteLoader("configs", "https://api.aiart.doubtech.com/comfyui/configs")
