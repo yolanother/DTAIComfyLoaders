@@ -4,6 +4,7 @@ import hashlib
 import urllib
 from urllib import request
 import folder_paths
+from custom_nodes.DTAIComfyLoaders import config
 
 
 class RemoteLoader:
