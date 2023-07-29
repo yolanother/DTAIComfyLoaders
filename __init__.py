@@ -1,3 +1,6 @@
+from io import BytesIO
+
+import requests as requests
 import torch
 
 import os
@@ -17,6 +20,7 @@ import comfy.model_management
 
 import comfy
 from PIL import Image, ImageOps
+import requests
 
 import folder_paths
 from comfy_extras.chainner_models import model_loading
@@ -263,6 +267,23 @@ class DTLoadLatent:
             return "Invalid latent file: {}".format(latent)
         return True
 
+def load_image_from_url(url):
+    try:
+        # Send a GET request to fetch the image data
+        response = requests.get(url)
+
+        # Check if the request was successful
+        response.raise_for_status()
+
+        # Read the image data and create a PIL image
+        image = Image.open(BytesIO(response.content))
+
+        return image
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error loading image from URL: {url}")
+        print(e)
+        return None
 
 class DTLoadImage:
     loaded_path = None
@@ -281,7 +302,7 @@ class DTLoadImage:
     RETURN_TYPES = ("IMAGE", "MASK")
     FUNCTION = "load_image"
     def load_image(self, image):
-        i = Image.open(image)
+        i = load_image_from_url(image)
         i = ImageOps.exif_transpose(i)
         image = i.convert("RGB")
         image = np.array(image).astype(np.float32) / 255.0
@@ -325,8 +346,7 @@ class DTLoadImageMask:
     RETURN_TYPES = ("MASK",)
     FUNCTION = "load_image"
     def load_image(self, image, channel):
-        # Load the image from a url
-        i = Image.open(image)
+        i = load_image_from_url(image)
         i = ImageOps.exif_transpose(i)
         if i.getbands() != ("R", "G", "B", "A"):
             i = i.convert("RGBA")
