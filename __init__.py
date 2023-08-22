@@ -59,6 +59,9 @@ class DTVAELoader:
 
 
 class DTLoraLoader:
+    def __init__(self):
+        self.loaded_lora = None
+
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "model": ("MODEL",),
@@ -76,10 +79,66 @@ class DTLoraLoader:
         if strength_model == 0 and strength_clip == 0:
             return (model, clip)
 
-        lora_path = lora.download("lora_name")
-        model_lora, clip_lora = comfy.sd.load_lora_for_models(model, clip, lora_path, strength_model, strength_clip)
+        lora_path = lora.download(lora_name)
+        if self.loaded_lora is not None:
+            if self.loaded_lora[0] == lora_path:
+                loaded_lora = self.loaded_lora[1]
+            else:
+                temp = self.loaded_lora
+                self.loaded_lora = None
+                del temp
+
+        if loaded_lora is None:
+            loaded_lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
+            self.loaded_lora = (lora_path, lora)
+
+        model_lora, clip_lora = comfy.sd.load_lora_for_models(model, clip, loaded_lora, strength_model, strength_clip)
         return (model_lora, clip_lora)
 
+
+class DTLorasLoader:
+    def __init__(self):
+        self.loaded_loras = dict()
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": { "model": ("MODEL",),
+                              "clip": ("CLIP", ),
+                              "loras": ("STRING", {
+                                    "multiline": False,
+                                    "default": "disney-princess:1.0:1.0,cyberpunk-animal:.5:1"
+                                }),
+                              }}
+    RETURN_TYPES = ("MODEL", "CLIP")
+    FUNCTION = "load_lora"
+
+    CATEGORY = "DoubTech/Loaders"
+
+    def load_lora(self, model, clip, loras):
+        # split loras by commas
+        loras = loras.split(",")
+
+        model_lora = model
+        model_clip = clip
+
+        for l in loras:
+            # split each lora by colons. 0: name, 1: strength_model (optional=1), 2: strength_clip (optional=1)
+            lora_request = l.split(":")
+            lora_name = lora_request[0]
+            # if the name doesn't have an extension add .safetensors
+            if not lora_name.endswith(".safetensors"):
+                lora_name += ".safetensors"
+            strength_model = float(lora_request[1]) if len(lora_request) > 1 else 1.0
+            strength_clip = float(lora_request[2]) if len(lora_request) > 2 else 1.0
+
+            if lora_name not in self.loaded_loras:
+                lora_path = lora.download(lora_name)
+                loaded_lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
+                self.loaded_loras[lora_name] = loaded_lora
+            else:
+                loaded_lora = self.loaded_loras[lora_name]
+            model_lora, model_clip = comfy.sd.load_lora_for_models(model_lora, model_clip, loaded_lora, strength_model, strength_clip)
+
+        return (model_lora, model_clip,)
 
 class DTCLIPLoader:
     @classmethod
@@ -410,6 +469,7 @@ NODE_CLASS_MAPPINGS = {
     "DTLoadImage": DTLoadImage,
     "DTLoadImageMask": DTLoadImageMask,
     "DTUpscaleModelLoader": DTUpscaleModelLoader,
+    "DTLorasLoader": DTLorasLoader
 }
 
 # A dictionary that contains the friendly/humanly readable titles for the nodes
@@ -428,4 +488,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DTPreviewImage": "Preview Image (Online)",
     "DTLoadImage": "Load Image from URL",
     "DTLoadImageMask": "Load Image Mask from URL",
+    "DTLorasLoader": "Load Multiple LoRAs by name (Online)",
 }

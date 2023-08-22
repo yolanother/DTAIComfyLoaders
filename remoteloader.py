@@ -30,6 +30,19 @@ class RemoteLoader:
             return []
 
     def filename(self, key):
+        # if download_path is set, use it joined with self.path
+        if '' != config.download_path:
+            folder = os.path.join(config.download_path, self.path)
+        else:
+            # otherwise, use the default path
+            folder = folder_paths.get_folder_paths(self.path)[0]
+
+        full_path = os.path.join(folder, key)
+        print("full_path: ", full_path)
+        # if the file exists return full_path
+        if os.path.exists(full_path):
+            return full_path
+
         if key not in self.data:
             raise KeyError(f"Key {key} not found in {self.uri}")
 
@@ -61,13 +74,12 @@ class RemoteLoader:
         return full_path
 
     def download(self, key):
-        if key not in self.data:
-            raise KeyError(f"Key {key} not found in {self.uri}")
-
         filename = self.filename(key)
 
         # If the file doesn't exist at that path, download and save it
         if not os.path.exists(filename):
+            if key not in self.data:
+                raise KeyError(f"Key {key} not found in {self.uri}")
             urllib.request.urlretrieve(self.data[key], filename)
 
         return filename
