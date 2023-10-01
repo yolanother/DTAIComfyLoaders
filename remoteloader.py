@@ -38,6 +38,8 @@ class RemoteLoader:
             folder = folder_paths.get_folder_paths(self.path)[0]
 
         full_path = os.path.join(folder, key)
+        # get absolute path for the full path
+        full_path = os.path.abspath(full_path)
         print("full_path: ", full_path)
         # if the file exists return full_path
         if os.path.exists(full_path):
