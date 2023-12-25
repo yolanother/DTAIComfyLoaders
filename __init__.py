@@ -124,8 +124,11 @@ class DTLorasLoader:
             # split each lora by colons. 0: name, 1: strength_model (optional=1), 2: strength_clip (optional=1)
             lora_request = l.split(":")
             lora_name = lora_request[0]
+            if len(lora_name) == 0:
+                continue
+
             # if the name doesn't have an extension add .safetensors
-            if not lora_name.endswith(".safetensors"):
+            if not lora_name.endswith(".safetensors") and len(lora_name) > 0:
                 lora_name += ".safetensors"
             strength_model = float(lora_request[1]) if len(lora_request) > 1 else 1.0
             strength_clip = float(lora_request[2]) if len(lora_request) > 2 else 1.0
