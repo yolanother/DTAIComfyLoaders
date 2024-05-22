@@ -1,0 +1,15 @@
+[project]
+name = "dtaicomfyloaders"
+description = "Nodes: Submit Image (Parameters), Submit Image. A collection of loaders that use a shared common online data source rather than relying on the files to be present locally."
+version = "1.0.0"
+license = "LICENSE"
+dependencies = ["requests"]
+
+[project.urls]
+Repository = "https://github.com/yolanother/DTAIComfyLoaders"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "DTAIComfyLoaders"
+Icon = ""
