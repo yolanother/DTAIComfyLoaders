@@ -4,7 +4,15 @@ import hashlib
 import urllib
 from urllib import request
 import folder_paths
-from custom_nodes.DTAIComfyLoaders import config
+
+
+# define the type for config
+class Config:
+    def __init__(self):
+        self.download_path = os.getenv("COMFYUI_MODEL_PATH") or "models"
+
+
+config = Config()
 
 
 class RemoteLoader:
