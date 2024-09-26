@@ -4,7 +4,7 @@ import hashlib
 import urllib
 from urllib import request
 import folder_paths
-
+import threading
 
 # define the type for config
 class Config:
@@ -21,7 +21,7 @@ class RemoteLoader:
         self.uri = uri
         self.path = path
 
-        self.load()
+        threading.Thread(target=self.load).start()
 
     def load(self):
         try:
