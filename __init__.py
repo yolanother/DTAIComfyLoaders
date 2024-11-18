@@ -331,6 +331,14 @@ class DTLoadLatent:
 
 def load_image_from_url(url):
     try:
+        # if the image is a data url, extract the base64 data and load it
+        if url.startswith("data:"):
+            import base64
+            data = url.split(",")[1]
+            data = base64.b64decode(data)
+            image = Image.open(BytesIO(data))
+            return image
+
         # Send a GET request to fetch the image data
         response = requests.get(url)
 
